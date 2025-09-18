@@ -4,6 +4,7 @@ pandas==2.*
 openpyxl==3.*
 python-dotenv==1.*
 num2words==0.5.12
-reportlab==3.*
+fpdf2
 arabic-reshaper==3.*
 python-bidi==0.4.*
+
