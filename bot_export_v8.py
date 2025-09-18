@@ -33,11 +33,10 @@ def build_statement_pdf_fpdf(out_path: Path, rows_df: pd.DataFrame, header_info:
     - رصيد تراكمي من عمود AMT (مدين +، دائن -)
     - أعمدة: التاريخ، نوع المستند، رقم المستند، البيان، رقم المرجع، مدين، دائن، الرصيد
     """
-    pdf = StatementPDF(orientation="L", unit="mm", format="A4")  # Landscape مثل الصورة
+    pdf = StatementPDF(orientation="L", unit="mm", format="A4")  # Landscape
     pdf.add_page()
 
-    # جرّب خط Arial (موجود غالبًا في ويندوز). لإضافة خط TTF مخصص:
-    # pdf.add_font("Noto", "", "fonts/NotoNaskhArabic-Regular.ttf", uni=True); font_name="Noto"
+    # خطوط FPDF الأساسية تشمل Arial
     font_name = "Arial"
     pdf.set_font(font_name, size=14)
 
@@ -67,7 +66,6 @@ def build_statement_pdf_fpdf(out_path: Path, rows_df: pd.DataFrame, header_info:
 
     pdf.set_font(font_name, "", 9)
     bal = 0.0
-    # الطباعة سطرًا بسطر
     for _, r in rows_df.iterrows():
         try:
             amt = float(str(r.get("amt","") or "0"))
@@ -89,13 +87,11 @@ def build_statement_pdf_fpdf(out_path: Path, rows_df: pd.DataFrame, header_info:
             f"{bal:,.2f}",
         ]
 
-        # اطبع الأعمدة (يمين للحقول العربية)
         for i, val in enumerate(row):
             align = "R" if i in (1,3) else "C"
             pdf.cell(col_w[i], 7, val, border=1, align=align)
         pdf.ln(7)
 
-        # إذا اقتربنا من نهاية الصفحة — اطبع رأس الجدول في الصفحة التالية
         if pdf.get_y() > 185:
             pdf.add_page()
             pdf.set_font(font_name, "B", 10)
@@ -305,13 +301,10 @@ def apply_custom_rules(fields: Dict[str, Any]) -> Dict[str, Any]:
     beneficiary = fields.get("beneficiary", "")
     doc_type = fields.get("document_type", "")
 
-    # 1) المستفيد/صاحب الحساب يحوي "مهدي" => قبض
     if "مهدي" in beneficiary:
         fields["document_type"] = "سند قبض"
-    # 2) سند قبض مراجعة + المرسل يحوي "مهدي" => صرف
     elif ("سند قبض مراجعة" in doc_type) and ("مهدي" in sender):
         fields["document_type"] = "سند صرف"
-    # 3) المرسل يحوي "مهدي" => صرف
     elif "مهدي" in sender:
         fields["document_type"] = "سند صرف"
 
@@ -420,11 +413,9 @@ def filter_by_date_and_currency(df: pd.DataFrame, start: str, end: str, currency
     if end:
         out = out[out["date"] <= end]
     if currency_label:
-        # نحول اسم العملة للشييت القياسي (ريال يمني / ريال سعودي ..)
         sheet = sheet_name_for_currency(currency_label)
         if "__sheet__" in out.columns:
             out = out[out["__sheet__"].astype(str) == sheet]
-    # تأكد من الأعمدة
     for col in ["amt","debit","credit","document_type","voucher_number","description","date"]:
         if col not in out.columns:
             out[col] = ""
@@ -573,22 +564,20 @@ async def cmd_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.reply_text("لا توجد قيود ضمن هذه الفترة/العملة.")
         return
 
-    # رتب حسب التاريخ ثم رقم السند
     try:
         fdf = fdf.sort_values(by=["date","voucher_number"], ascending=[True, True])
     except Exception:
         pass
 
     header = {
-    "company": "كشف حساب - مهدي",
-    "title": "كشف حساب إيرادات ومصروفات",
-    "account": "حساب: مهدي صالح ناصر الصويدر",
-    "analytic": "",
-    "from": params["from"],
-    "to": params["to"],
-    "currency_label": params.get("currency",""),
+        "company": "كشف حساب - مهدي",
+        "title": "كشف حساب إيرادات ومصروفات",
+        "account": "حساب: مهدي صالح ناصر الصويدر",
+        "analytic": "",
+        "from": params["from"],
+        "to": params["to"],
+        "currency_label": params.get("currency",""),
     }
-
 
     ts = datetime.datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     out_path = Path(f"statement_{ts}.pdf")
@@ -630,7 +619,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if doc_type == "سند قبض":
         amount_line = f"- المبلغ (مدين): {amount_val} {currency}"
     elif doc_type == "سند صرف":
-        amount_line = f"- المبلغ (دائن): {amount_val} {currency}"
+        amount_line = f"- المبلغ ( دائن): {amount_val} {currency}"
     else:
         amount_line = f"- المبلغ: {amount_val} {currency}"
 
@@ -832,11 +821,29 @@ def main():
     app.add_handler(CommandHandler("find", cmd_find))
     app.add_handler(CommandHandler("voucher", cmd_voucher))
     app.add_handler(CommandHandler("export", cmd_export))
-    app.add_handler(CommandHandler("pdf", cmd_pdf))  # <-- الجديد
+    app.add_handler(CommandHandler("pdf", cmd_pdf))
     app.add_handler(CallbackQueryHandler(on_button))
     app.add_handler(MessageHandler(filters.PHOTO | (filters.Document.IMAGE), handle_photo_or_doc))
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_text))
-    app.run_polling(close_loop=False)
+
+    # ---- اختيار التشغيل: Polling (افتراضي) أو Webhook (للـ Web Service) ----
+    run_mode = os.getenv("RUN_MODE", "polling").strip().lower()
+    if run_mode == "webhook":
+        base_url = os.environ.get("RENDER_EXTERNAL_URL")  # مثال: https://your-app.onrender.com
+        if not base_url:
+            raise RuntimeError("للـ webhook: يجب توفر RENDER_EXTERNAL_URL من Render")
+        path = os.environ.get("WEBHOOK_PATH", "telegram-webhook")
+        port = int(os.environ.get("PORT", "10000"))
+        app.run_webhook(
+            listen="0.0.0.0",
+            port=port,
+            url_path=path,
+            webhook_url=f"{base_url.rstrip('/')}/{path}",
+            drop_pending_updates=True
+        )
+    else:
+        # Background Worker (لا يحتاج منفذ)
+        app.run_polling(close_loop=False)
 
 if __name__ == "__main__":
     main()
