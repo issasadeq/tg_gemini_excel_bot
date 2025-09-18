@@ -1,0 +1,9 @@
+python-telegram-bot==21.4
+google-generativeai==0.7.*
+pandas==2.*
+openpyxl==3.*
+python-dotenv==1.*
+num2words==0.5.12
+reportlab==3.*
+arabic-reshaper==3.*
+python-bidi==0.4.*

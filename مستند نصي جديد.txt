@@ -1,0 +1,8 @@
+
+python -m venv .venv
+.venv\Scripts\activate.bat
+
+pip install -r requirements.txt
+python bot_gemini_structured_excel_v2.py
+
+python ‏‏bot_export_v3.py
